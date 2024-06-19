@@ -1,6 +1,10 @@
+
+![B](https://github.com/Silve-Ruano/TFM/assets/157005665/1f9ec5e4-fc2a-474f-93dc-c876f0fe1486)
 # Introducción
 En este repositorio emplearemos la plataforma Beyondcell (Fustero-Torres et al., 2021). Esta se basa en identificar cómo los fármacos afectan a las diferentes líneas celulares en datos de scRNA-seq. Se trabaja en entorno R.
 # Descripción del pipeline
+![BCpipeline](https://github.com/Silve-Ruano/TFM/assets/157005665/48ee4417-9852-43d1-b1ff-ddc11cb0d847)
+
 - Paso 1: A partir de dos matrices, una matriz de expresión Seurat (pre-procesada) y una firma de expresión de fármacos (PSc o SSc) calculamos las puntuaciones Beyondcell para cada par célula-fármaco.
 - Paso 2: Las puntuaciones Beyondcell varían entre 0 y 1 midiendo la sensibilidad de cada célula a un fármaco. La matriz Beyondcell resultante debe estar escalada y normalizada.
 - Paso 3: Con la matriz Beyondcell podemos obtener los clusteres terapéuticos (en UMAP) del dataset que deseemos, según la característica que queramos resaltar.
