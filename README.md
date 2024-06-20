@@ -38,8 +38,8 @@ Se recomienda que si aparece algún error consultar la sesión de R con SessionI
 - Silvestre Ruano Rodríguez*
 - Juan Antonio Nepomuceno Chamorro
 - Isabel de los Ángeles Nepomuceno Chamorro
-- Fátima Al-Shahrour
-- María José Jiménez Santos ('Piti')
+
+# Agradecimientos
 # Citación
 
 # Apoyo técnico
