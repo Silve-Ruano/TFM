@@ -1,7 +1,7 @@
 
 ![B](https://github.com/Silve-Ruano/TFM/assets/157005665/1f9ec5e4-fc2a-474f-93dc-c876f0fe1486)
 # Introducción
-En este repositorio emplearemos la plataforma Beyondcell (Fustero-Torres et al., 2021). Esta se basa en identificar cómo los fármacos afectan a las diferentes líneas celulares en datos de scRNA-seq. Se trabaja en entorno R.
+En este repositorio emplearemos la plataforma Beyondcell (Fustero-Torres et al., 2021). Esta se basa en identificar cómo los fármacos afectan a las diferentes líneas celulares en datos de scRNA-seq. De esta forma se puede desentrañar la heterogeneidad tumoral de los datasets que analicemos. Se trabaja en entorno R.
 # Descripción del pipeline
 ![BCpipeline](https://github.com/Silve-Ruano/TFM/assets/157005665/48ee4417-9852-43d1-b1ff-ddc11cb0d847)
 
@@ -23,7 +23,7 @@ NOTA: La matriz PSc indica la susceptibilidad a la perturbación (antes vs despu
 - Detectar mecanismos de resistencia y de tolerancia frente a los medicamentos de las firmas farmacológicas.
 
 # ¿Cómo instalamos el paquete 'Beyondcell'?
-Se recomienda instalar el paquete Beyondcell en una versión de R >= 4.0.0. Asimismo, es necesario para su correcto funcionamiento la v4 Seurat. Para la correcta instalación del paquete usamos un ambiente conda: 
+Se recomienda instalar el paquete Beyondcell en una versión de R >= 4.0.0. Asimismo, es necesario para su correcto funcionamiento la v4 Seurat, pues Beyondcell no funciona con Seurat v5. Para la correcta instalación del paquete usamos un ambiente conda y mamba para descargar el paquete desde el Github de Beyondcell: 
 
 ``` ruby
 # Create a conda environment.
@@ -33,6 +33,7 @@ conda activate beyondcell
 # Install beyondcell package and dependencies.
 mamba install -c bu_cnio r-beyondcell
 ```
+Se recomienda que si aparece algún error consultar la sesión de R con SessionInfo () y ver las dependencias de los diferentes paquetes que necesita Beyondcell. Será útil la función devtools::install.packages(...).
 # Autores
 - Silvestre Ruano Rodríguez*
 - Juan Antonio Nepomuceno Chamorro
