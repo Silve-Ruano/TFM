@@ -1,29 +1,28 @@
 
 ![B](https://github.com/Silve-Ruano/TFM/assets/157005665/1f9ec5e4-fc2a-474f-93dc-c876f0fe1486)
-# Introducción
-En este repositorio emplearemos la plataforma Beyondcell (Fustero-Torres et al., 2021). Esta se basa en identificar cómo los fármacos afectan a las diferentes líneas celulares en datos de scRNA-seq. De esta forma se puede desentrañar la heterogeneidad tumoral de los datasets que analicemos. Se trabaja en entorno R.
-# Descripción del pipeline
+# Introduction
+In this repository, we will use the Beyondcell platform (Fustero-Torres et al., 2021). This platform is based on identifying how drugs affect different cell lines in scRNA-seq data. In this way, we can unravel the tumor heterogeneity of the datasets we analyze. We will work in an R environment.
+# Pipeline Description
 ![BCpipeline](https://github.com/Silve-Ruano/TFM/assets/157005665/48ee4417-9852-43d1-b1ff-ddc11cb0d847)
 
-- Paso 1: A partir de dos matrices, una matriz de expresión Seurat (pre-procesada) y una firma de expresión de fármacos (PSc o SSc) calculamos las puntuaciones Beyondcell para cada par célula-fármaco.
-- Paso 2: Las puntuaciones Beyondcell varían entre 0 y 1 midiendo la sensibilidad de cada célula a un fármaco. La matriz Beyondcell resultante debe estar escalada y normalizada.
-- Paso 3: Con la matriz Beyondcell podemos obtener los clusteres terapéuticos (en UMAP) del dataset que deseemos, según la característica que queramos resaltar.
-- Paso 4: Realizamos una priorización de fármacos obteniendo un ranking tras computar los rangos.
-- Paso 5: La puntuación obtenida de cada medicamento (la susceptibilidad) se puede visualizar en una UMAP.
+- Step 1: From two matrices, a Seurat expression matrix (pre-processed) and a drug expression signature (PSc or SSc), we calculate Beyondcell scores for each cell-drug pair.
+- Step 2: Beyondcell scores range from 0 to 1, measuring each cell's sensitivity to a drug. The resulting Beyondcell matrix should be scaled and normalized.
+- Step 3: With the Beyondcell matrix, we can obtain therapeutic clusters (in UMAP) of the desired dataset, according to the characteristic we want to highlight.
+- Step 4: We perform drug prioritization by obtaining a ranking after computing the ranks.
+- Step 5: The score obtained for each drug (the susceptibility) can be visualized in a UMAP plot.
+*NOTE*: The PSc matrix indicates susceptibility to perturbation (before vs. after), and the SSc matrix shows the sensitivity of cells to a drug.
 
-NOTA: La matriz PSc indica la susceptibilidad a la perturbación (antes vs después) y la SSc muestra la sensibilidad de las células a un fármaco. 
+# Current Applications
+- Ability to use a reliable tool to unravel Tumor Heterogeneity.
+- Rank drugs by their effect on various tumor cell lines.
+- Prioritize drugs in the fight against certain types of cancer.
 
-# Aplicaciones actuales
-- Posibilidad de emplear una herramienta confiable para desentrañar la Heterogeneidad Tumoral.
-- Ordenar fármacos por su efecto en varias líneas celulares tumorales.
-- Priorizar medicamentos en la lucha contra determinados tipo de cáncer.
+# Future Applications
+- A layer for performing Spatial Transcriptomics (ST) will be included to investigate expression patterns within tissues (Coming Soon).
+- Detect resistance and tolerance mechanisms against drugs from the pharmacological signatures.
 
-# Aplicaciones futuras
-- Se incluirá una capa para la realización de Transcriptómica Espacial (ST), para investigar patrones de expresión dentro de tejidos (Próximamente).
-- Detectar mecanismos de resistencia y de tolerancia frente a los medicamentos de las firmas farmacológicas.
-
-# ¿Cómo instalamos el paquete 'Beyondcell'?
-Se recomienda instalar el paquete Beyondcell en una versión de R >= 4.0.0. Asimismo, es necesario para su correcto funcionamiento la v4 Seurat, pues Beyondcell no funciona con Seurat v5. Para la correcta instalación del paquete usamos un ambiente conda y mamba para descargar el paquete desde el Github de Beyondcell: 
+# How to install the 'Beyondcell' Package
+It is recommended to install the Beyondcell package on an R version >= 4.0.0. Additionally, Seurat v4 is necessary for its proper functioning, as Beyondcell does not work with Seurat v5. For the correct installation of the package, we use a conda environment and mamba to download the package from Beyondcell's Github: 
 
 ``` ruby
 # Create a conda environment.
@@ -33,14 +32,18 @@ conda activate beyondcell
 # Install beyondcell package and dependencies.
 mamba install -c bu_cnio r-beyondcell
 ```
-Se recomienda que si aparece algún error consultar la sesión de R con SessionInfo () y ver las dependencias de los diferentes paquetes que necesita Beyondcell. Será útil la función devtools::install.packages(...).
-# Autores
+It is recommended that if any errors appear, check the R session with SessionInfo() and look at the dependencies of the different packages that Beyondcell requires. The devtools::install.packages(...) function will be useful.
+
+# Autors
 - Silvestre Ruano Rodríguez*
 - Juan Antonio Nepomuceno Chamorro
 - Isabel de los Ángeles Nepomuceno Chamorro
 
-# Agradecimientos
-# Citación
+# Acknowledgements
+We would like to thank Fátima Al-Shahrour and María José Jiménez-Santos for their selfless dedication in helping us and sending us some data that were not available in public repositories.
 
-# Apoyo técnico
-Si surge alguna duda, recomendamos comentarlo en la pestaña 'issue' para su resolución. En caso de no resolverse de esta forma, no dude en enviar un email con la incidencia a silruarod@alum.us.es
+# Citation
+Ruano, S., Nepomuceno, JA., Nepomuceno, IA. "Beyondcell: A Bioinformatics Approach to Adress Tumor Heterogeneity in Personalized Cancer Treatment". 2024. 
+
+# Technical Support
+If you have any questions, we recommend commenting on the 'issue' tab for resolution. If the issue is not resolved this way, please do not hesitate to send an email with the incident to silruarod@alum.us.es.
