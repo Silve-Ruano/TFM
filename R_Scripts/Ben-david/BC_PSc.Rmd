@@ -1,0 +1,261 @@
+---
+title: "BC_PSc"
+author: "Silvestre"
+date: "2024-05-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 10, fig.height = 7, dpi = 300)
+```
+
+We load the necessary packages to perform the analysis, as well as the drug perturbation signatures (PSc) data matrix. It is important to note that PSc must be in the correct format to obtain the Beyondcell object. The file 'seurat_clusters.rds' contains the data obtained from Ben-David of 27 types of breast cancer cell line MCF7-AA.
+
+```{r, message=FALSE}
+library("beyondcell")
+library("Seurat")
+library('ggplot2')
+set.seed(1) #We assign a seed to obtain the same results.
+# Read single-cell experiment.
+path_to_sc <- "seurat_clusters.rds"
+sc = readRDS(path_to_sc) #LINCS (Seurat Object)
+
+#This .rds file has been downloaded from the Beyondcell GitHub repository (https://github.com/cnio-bu/beyondcell).
+```
+
+Since we are using a Seurat object, we refer to it as follows (sc), to utilize the RNA assay, as we are indeed working with single-cell transcriptomic data.
+
+```{r}
+DefaultAssay(sc)<- "RNA"
+
+```
+
+Before calculating the BCS, we need a gene set with drug expression signatures and functional ones (optional). To achieve this, we use the GetCollection() function. This loads the collections (PSc, SSc, and DSS) for drug signatures from Beyondcell that are ready to use. In this script, we will work with the PSc matrix, excluding functional pathways because they are too heavy to process due to RAM limitations and the capacity of RStudio. This matrix contains a large number of signatures, on the order of thousands, using the bidirectional method (genes up and down) with 250 genes.
+
+```{r}
+#By default, the Get Collection function does not use functional pathways.
+
+gs_psc<- GetCollection(PSc) #Drug Perturbation Signatures
+dss<- GetCollection(DSS) # Background Signature
+ssc<- GetCollection(SSc) #Drug Sensitivity Signatures
+
+```
+ 
+Unlike the other two datasets analyzed (Kinker and Stewart), this one is less heavy, and we do not need to perform matrix extractions. Now we will calculate the BCS for the PSc
+
+```{r, message=F}
+# Compute BCS for the PSc. This might take a few minutes depending on the size of your dataset. I used PSc matrix.
+bc <- bcScore(sc = sc, gs = gs_psc, expr.thres = 0.1)
+
+# An expression threshold of 0.1 is used to eliminate values of 0 or no expression.
+```
+
+As a result, we obtain a Beyondcell Object. This contains normalized and scaled Beyondcell scores, as well as switch points (SP) and other parameters used in the analysis. The Beyondcell Object can be used for dimensionality reduction and clustering analysis using the bcUMAP() function, which we will employ next. We use 10 PCs after reviewing the plot, as it's the optimal number to reduce computational time and diminish variability and noise, although complete elimination of noise is not achievable.
+
+This approach allows us to classify cells into different clusters, which represent groups sharing a common response to a drug. UMAP facilitates this visualization by faithfully projecting multiple dimensions onto a 2D graph without losing spatial representation.
+
+```{r}
+# Run the UMAP reduction. 
+bc <- bcUMAP(bc, k.neighbors = 4, res = 0.2)
+# Run the bcUMAP function again, specifying the number of principal components you want to use.
+bc <- bcUMAP(bc, pc = 10, k.neighbors = 4, res = 0.2)
+
+#We use a resolution of 0.2 depending on whether we want a higher or lower number of communities. We use 4 as the value for knn and 10 as the number of PCs we use.
+```
+
+Upon observing the plots, we note that using 10 PCs is sufficient to capture the majority of variability.
+
+Additionally, it's important to check for sources of unwanted variation that could potentially misguide the clustering analysis. Therefore, the bcClusters() function colors the UMAP based on metadata variables that may influence this grouping. These sources of variation could include:
+
+- Number of unique genes detected per cell (using the nFeature_RNA function)
+- Number of RNA molecule counts detected (nCount_RNA)
+- Cell cycle phase (Phase)
+- Batch
+- ...
+These factors help ensure that any observed clusters are biologically meaningful and not artifacts of technical variation.
+
+```{r}
+# Visualize whether the cells are clustered based on the number of genes detected per each cell and number of RNA molecules.
+bcClusters(bc, UMAP = "beyondcell", idents = "nFeature_RNA", factor.col = FALSE, pt.size = 1.5)
+
+bcClusters(bc, UMAP = "beyondcell", idents = "nCount_RNA", factor.col = FALSE, pt.size = 1.5)
+
+#We set factor.col to FALSE as the values are not of the factor type. With pt.size, we specify the thickness of the represented points, and with idents, we specify the characteristic we want to represent.
+
+#Correlation plot (nFeatures_RNA and nCount_RNA)
+x = bc@meta.data$nCount_RNA
+y= bc@meta.data$nFeature_RNA
+correlation_count_feature= cor(x = x, y= y)
+
+plot(x = bc@meta.data$nCount_RNA, y=bc@meta.data$nFeature_RNA, main = "Gráfico de correlación Count-Feature", xlab = 'Count', ylab = 'Feature')
+```
+
+In the first UMAP plot, we detect 2 clusters classified by the number of genes detected per cell. Both clusters show a gradient. In the larger cluster, cells with lower UMAP1 values tend to have a higher number of detected genes. Conversely, in the smaller cluster, cells with lower UMAP2 values tend to have a higher number of detected genes.
+
+In the second plot, which displays the number of detected counts, there appears to be a relationship with the number of genes detected per cell. Cells where the number of detected counts is higher also tend to have a higher number of detected genes. This relationship is demonstrated in the correlation plot.
+
+```{r}
+# Visualize whether the cells are clustered based on their cell cycle status.
+bcClusters(bc, UMAP = "beyondcell", idents = "Phase", factor.col = TRUE, pt.size = 1.5)
+bcClusters(bc, UMAP = "beyondcell", idents = "seurat_clusters", factor.col = TRUE, pt.size = 1.5)
+
+#In this case, since they are factors, factor.col = T with a different idents depending on the condition we want to view from the metadata slot.
+
+```
+
+We wanted to observe if cells grouped according to their cell cycle state, and it appears that cells are distributed quite heterogeneously. Therefore, there are no distinct differences in cancer cells based on the cell cycle. In other words, all cells can be found in the G1, G2M, and S phases. In the second graph, cells are grouped according to Seurat, but it is unable to detect homogeneous clusters (although it identifies 11 clusters).
+
+To correct one of the sources of variation that could potentially affect our analysis, we would use the bcRegressOut function. It's important to note that the number of genes detected per cell will always impact the final score. With bcRegressOut(), it returns a Beyondcell object with normalized regression BCS, scaled regression BCS, and regression switch points (SP), although we won't perform this step in this case.
+
+Once corrected, we should proceed with reducing the dimensionality and clustering to identify true therapeutic groups present in the sample.
+
+```{r}
+# Recompute the UMAP.
+bc <- bcUMAP(bc, pc = 10, k.neighbors = 20, res = 0.2)
+# Visualize the therapeutic clusters.
+bcClusters(bc, UMAP = "beyondcell", idents = "bc_clusters_res.0.2", pt.size = 1.5)
+
+bcClusters(bc, UMAP = "beyondcell", idents = "condition", pt.size = 1.5)
+```
+
+In this plot, we observe the clusters resulting from UMAP dimensionality reduction.
+
+In the first UMAP plot, cells are grouped into 5 clusters (0, 1, 2, 3, 4) based on their response to bortezomib. This demonstrates Beyondcell's capability to distinguish the perturbation induced by bortezomib within the same type of cancer cells (MCF-7 breast cancer cells).
+
+In the second UMAP plot, cells are grouped by treatment time after exposure to bortezomib. We can observe that the 4 treatment groups (t0, t12, t48, t96) overlap. There are significant differences between the t0 condition and the cluster containing the other three conditions.
+
+Next, we can generate a summary table using the bcRanks() function. This table includes basic statistical descriptors such as SP, mean, median, mean residual, etc. It also calculates a signature rank considering SP and mean residual. This table helps prioritize candidate drugs for specific groups of cells.
+
+```{r}
+# Obtain condition-based statistics.
+bc <- bcRanks(bc, idents = "condition", extended = FALSE)
+
+
+# Obtain unextended therapeutic cluster-based statistics.
+bc <- bcRanks(bc, idents = "bc_clusters_res.0.2", extended = FALSE)
+
+#If extended = TRUE, we obtain more parameters such as standard deviation, minimum and maximum, and other statistics (more computationally expensive). Then, with sp.cutoff and resm.cutoff, we can apply a filter for SP and residual mean as desired, with both being vectors
+```
+
+Next, we will create a series of scatter plots based on the clusters detected by the tool:
+
+```{r}
+# Find drugs to specifically target TC1 (cancer cells) and the other TCs.
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "1", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "0", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "2", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "3", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "4", top = 3, pt.size = 1)
+
+# With level, we select the level of the metadata feature (number of clusters, etc.). With top, we select the number of most significant drugs per quadrant. Thanks to pt.size, we select the point size. With force=1, we avoid label overlap.
+```
+
+After using the bc4Squares function, we obtain scatter plots for each cluster depicting the drugs that induce the most and least changes in expression profiles of the cells included in the cluster of interest. This allows us to prioritize drugs (graphical representations of scores and SP, identifying sensitivity or resistance, unraveling therapeutic heterogeneity, etc).
+
+In this type of graph, SP (Y-axis) and the mean of residuals (X-axis) are represented:
+
+- SP (switch point): reflects the magnitude of transcriptional changes in cells of the cluster being represented.
+
+- Mean of residuals: evaluates the efficacy of drug response models.
+
+This approach divides the plots into 4 quadrants, although not all quadrants may appear in every cluster:
+
+- Low Sensitivity Drugs: represent the least effective drugs as they do not induce changes in the expression profile of the cells.
+
+- High Sensitivity Drugs: are strong candidates due to their ability to induce significant expression changes or perturbations.
+
+- Differential High Sensitivity Drugs: these drugs induce a homogeneous response and are highly effective, but may not target all cells in the cluster accurately. They also induce changes in the expression profile.
+
+- Differential Low Sensitivity Drugs: induce a heterogeneous response and have low effectiveness. They are undesirable due to their limited ability to induce changes or perturbations.
+
+In our study results, we exemplify the drug AZD-6482, which shows promise in targeting MCF-7 breast cancer cells in cluster 0. Other interesting drugs include those from the PP family.
+
+The summary tables are stored in @ranks as a list of data. They can be accessed, for example, in the following way:
+ 
+```{r}
+# Explore the statistics table.
+head(bc@ranks$condition)
+head(bc@ranks$bc_clusters_res.0.2)
+
+```
+
+Next, we can prioritize based on the statistics and groups obtained from bcRanks(), filtering by cluster, SP, and other metrics.
+
+```{r}
+#Ranking per cluster
+rank_results_psc<- bc@ranks$bc_clusters_res.0.2
+rank_psc_tc0<- rank_results_psc[order(rank_results_psc$rank.0, na.last = T),]
+rank_psc_tc1<- rank_results_psc[order(rank_results_psc$rank.1, na.last = T),]
+rank_psc_tc2<- rank_results_psc[order(rank_results_psc$rank.2, na.last = T),]
+rank_psc_tc3<- rank_results_psc[order(rank_results_psc$rank.3, na.last = T),]
+rank_psc_tc4<- rank_results_psc[order(rank_results_psc$rank.4, na.last = T),]
+
+#Ranking per SP
+
+rank_psc_SP0<-rank_results_psc[order(rank_results_psc$switch.point.0, na.last = T),]
+
+rank_psc_SP1<-rank_results_psc[order(rank_results_psc$switch.point.1, na.last = T),]
+
+rank_psc_SP2<-rank_results_psc[order(rank_results_psc$switch.point.2, na.last = T),]
+rank_psc_SP3<-rank_results_psc[order(rank_results_psc$switch.point.3, na.last = T),]
+rank_psc_SP4<-rank_results_psc[order(rank_results_psc$switch.point.4, na.last = T),]
+
+
+#Ranking per residual mean
+
+rank_psc_RM0<-rank_results_psc[order(rank_results_psc$residuals.mean.0, na.last = T),]
+
+rank_psc_RM1<-rank_results_psc[order(rank_results_psc$residuals.mean.1, na.last = T),]
+
+rank_psc_RM2<-rank_results_psc[order(rank_results_psc$residuals.mean.2, na.last = T),]
+rank_psc_RM3<-rank_results_psc[order(rank_results_psc$residuals.mean.3, na.last = T),]
+rank_psc_RM4<-rank_results_psc[order(rank_results_psc$residuals.mean.4, na.last = T),]
+
+#Ranking per group
+
+rank_psc_group0<-rank_results_psc[order(rank_results_psc$group.0, na.last = T),]
+
+rank_psc_group1<-rank_results_psc[order(rank_results_psc$group.1, na.last = T),]
+rank_psc_group2<-rank_results_psc[order(rank_results_psc$group.2, na.last = T),]
+rank_psc_group3<-rank_results_psc[order(rank_results_psc$group.3, na.last = T),]
+rank_psc_group4<-rank_results_psc[order(rank_results_psc$group.4, na.last = T),]
+```
+
+The classification returned by bcRanks() orders drug signatures from highest to lowest sensitivity for a specific group of cells/points. This type of ranking can be useful for inspecting intratumoral heterogeneity (ITH). To facilitate the visualization of this ranking, we have included the bc4Squares() function in Beyondcell, which we previously explained in detail.
+
+It's important to note that SP is the scaled value where normalized negative scores switch to positive scores and vice versa. For example, a completely sensitive dataset will have SP = 0 (or close), as there will be no negative normalized scores for that specific drug across the entire population. Conversely, a dataset insensitive to a particular drug would be expected to have SP ≈ 1. Intermediate SP values, on the other hand, reflect datasets containing both susceptible and non-susceptible cells, thus reflecting heterogeneity.
+
+Note that SP is not equivalent to the proportion of cells insensitive to a specific drug, although there is a positive correlation between these two metrics.
+
+Now, let's perform some functions that may be useful after the computationally expensive process of obtaining the ranks slot, such as histograms, obtained with the bcHistogram() function:
+
+We will compute histograms for each drug signature across all therapeutic clusters obtained:
+
+```{r}
+bcHistogram(bc, signatures = "all", idents = "bc_clusters_res.0.2") 
+```
+
+We represent histograms for some drug signatures indicated by the scatter plot obtained using the bc4Squares function:
+
+```{r}
+
+bcHistogram(bc, signatures = c("sig-3484" , "sig-14817", "sig-7230", "sig-20633", "sig-6307", "sig-6794"), idents = "bc_clusters_res.0.2") 
+
+bcHistogram(bc, signatures = c("sig-7118" , "sig-19342", "sig-18868", "sig-5618", "sig-2230", "sig-2821"), idents = "bc_clusters_res.0.2") #TC0
+bcHistogram(bc, signatures = c("sig-14135" , "sig-5674", "sig-2182", "sig-853", "sig-1077", "sig-2755"), idents = "bc_clusters_res.0.2")# TC1
+bcHistogram(bc, signatures = c("sig-5674" , "sig-7212", "sig-18868", "sig-4152", "sig-16111"), idents = "bc_clusters_res.0.2") #TC2
+bcHistogram(bc, signatures = c("sig-14228" , "sig-7406", "sig-18868", "sig-19342", "sig-6139"), idents = "bc_clusters_res.0.2") #TC3
+bcHistogram(bc, signatures = c("sig-19342" , "sig-20485", "sig-148", "sig-18868"), idents = "bc_clusters_res.0.2") #TC4
+
+#With signatures, we select the drug signatures of our interest (in this case, those seen with bc4Squares), and with idents, the column of the metadata slot we want to view. It is necessary to apply bcRanks to the idents of our interest beforehand to obtain this plot.
+
+```
+
+As an example to explain the interpretation of the histogram plot, we will use AZD-6482, an inhibitor of the PI3K/Akt pathway by targeting a subunit of the PI3K enzyme, related to cellular proliferation control. In the histogram, we observe that its effect on gene expression modification is highest in Cluster 0 among the 5 clusters. Therefore, MCF7 cells classified in Cluster 0 experience the greatest change in transcriptional profile after treatment. It's also important to analyze the histogram distribution, which shows a broad spread indicative of heterogeneous response. Additionally, it appears to modify the expression profile of Cluster 1, indicating a positive effect on cellular proliferation. This situation contrasts sharply with what is observed in Clusters 3 and 4.
+
+As a bonus, we can compute the bcCellCycle() function, which could give us insight into any biases introduced by the cell cycle. However, it is not a critical function for the development of our study.
+
+```{r}
+bcCellCycle(bc, signatures = "all") 
+```
+

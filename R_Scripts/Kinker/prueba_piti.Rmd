@@ -1,0 +1,243 @@
+---
+title: "Untitled"
+author: "Silvestre"
+date: "2024-06-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 10, fig.height = 7, dpi = 300)
+```
+
+We load the necessary packages to perform the analysis, as well as the data matrix of drug sensitivity signatures (SSc). This matrix measures the sensitivity of different cells to the drugs used. The file 'pancancer_annotated.rds' contains the data obtained from Kinker's study, which consists of 198 cancer cell lines from 22 cancer types. We also set a seed to ensure the results do not vary from one analysis to another.
+
+```{r}
+library("beyondcell")
+library("Seurat")
+library('ggplot2')
+set.seed(1)
+
+# Read single-cell experiment.
+path_to_pan <- "pancancer_annotated.rds" # Seurat data matrix dimensions are 27257 x 54106
+pan = readRDS(path_to_pan) 
+
+#This RDS file has already been processed and sent by Fátima Al-Shahrour and María José Jiménez-Santos
+```
+We set the assay as 'RNA' because we are analyzing single-cell RNA-seq data, i.e., transcriptomic data.
+```{r}
+DefaultAssay(pan)<- "RNA"
+
+```
+
+Before calculating the BCS, we need a gene set with drug expression signatures and functional ones (optional). To do this, we use the GetCollection() function. This loads the collections (PSc, SSc, and DSS) for drug signatures from Beyondcell that are ready to use. In this script, we will work with the SSc matrix, excluding functional pathways because they are too heavy and we cannot process the data due to lack of RAM and RStudio's capacity.
+This matrix contains 581 signatures, using the bidirectional method (utilizing up and downregulated genes), employing 250 genes.
+
+```{r}
+gs_psc<- GetCollection(PSc) #Drug perturbation Signatures
+dss<- GetCollection(DSS) #Background Signature
+ssc<- GetCollection(SSc, include.pathways = F) #Drug Sensitivity Signatures
+```
+
+Due to the immense size of the dataset, I had to extract the main data in order to perform the processing, as these data are designed to be handled on a workstation with a minimum of 32GB of RAM. 
+
+```{r}
+metadata<- pan@meta.data
+counts<- as.matrix(pan@assays$RNA@data)
+
+```
+Next, we will remove the Seurat or count matrix, as processing it would give me an error due to lack of space. Now we will calculate the BCS using the Seurat object 'pan' and the sensitivity matrix SSc as input. We extract the 'metadata' slot, which includes various characteristics such as the number of unique genes counted in each cell, the cell count, percentage of ribosomal and mitochondrial RNA, treatment of each cell or cluster, etc.
+
+Subsequently, we calculate the change points by inputting the count matrix derived from the Seurat object and the SSc expression signature, with a threshold of 0.1 (to remove counts that are 0). Then, the 'metadata' matrix is incorporated into the Beyondcell matrix obtained after performing the bcScore() function. As a result, 25,481 out of 54,106 have no missing values, which is actually very low (around 47.1% of values).
+
+This demonstrates the significant experimental noise in the samples due to the single-cell technique.
+
+```{r}
+rm(pan) #We delete the Seurat matrix "pan" due to lack of space.
+bc<- bcScore(sc = counts, gs = ssc, expr.thres = 0.1)
+# An expression threshold of 0.1 is used to eliminate values of 0 or no expression.
+bc@meta.data <- metadata
+```
+As a result, we obtain a Beyondcell Object. This contains normalized and scaled Beyondcell scores, as well as change points (SP) and other parameters used in the analysis. The Beyondcell Object can be used for dimensionality reduction and clustering analysis using the bcUMAP() function, which is employed next. We use 10 PCs after reviewing the plot, finding it to be the optimal number to reduce computational time and minimize variability and noise (although it is never completely eliminated).
+
+This allows cells to be classified into different cluster groups, which share a common response to a drug. UMAP enables this visualization and has an advantage in that it does not lose spatial projection, accurately representing multiple dimensions in a 2D plot.
+
+```{r}
+# Run the UMAP reduction. 
+bc <- bcUMAP(bc, k.neighbors = 4, res = 0.2)
+# Run the bcUMAP function again, specifying the number of principal components you want to use.
+bc <- bcUMAP(bc, pc = 10, k.neighbors = 4, res = 0.2)
+
+#We use a resolution of 0.2 depending on whether we want a higher or lower number of communities. We use 4 as the value for knn and 10 as the number of PCs we use.
+```
+When observing the plots, we see that using 10 PCs is sufficient to capture most of the variability.
+
+It is also important to check for sources of unwanted variation that could misguide the clustering analysis. Therefore, the bcClusters() function colors the UMAP based on metadata variables that could influence this clustering. These sources of variation may include:
+
+- Number of unique genes detected per cell (using the nFeature_RNA function)
+- Number of RNA molecule counts detected (nCount_RNA)
+- Cell cycle phase (Phase)
+- Batch
+- ...
+
+```{r}
+# Visualize whether the cells are clustered based on the number of genes detected per each cell.
+bcClusters(bc, UMAP = "beyondcell", idents = "nFeature_RNA", factor.col = FALSE, pt.size = 1.5)
+
+bcClusters(bc, UMAP = "beyondcell", idents = "nCount_RNA", factor.col = FALSE, pt.size = 1.5)
+
+#We set factor.col to FALSE as the values are not of the factor type. With pt.size, we specify the thickness of the represented points, and with idents, we specify the characteristic we want to represent.
+
+#Correlation plot
+x = bc@meta.data$nCount_RNA
+y= bc@meta.data$nFeature_RNA
+correlation_count_feature= cor(x = x, y= y) #0.9174
+
+plot(x = bc@meta.data$nCount_RNA, y=bc@meta.data$nFeature_RNA, main = "Gráfico de correlación Count-Feature", xlab = 'Count', ylab = 'Feature')
+
+```
+The following graphs depict the number of unique genes detected per cell (nFeatures_RNA) and the number of RNA molecule counts detected (nCount_RNA). It appears that the clusters are not properly identified because they are very close together, indicating that the data groups have similar characteristics in terms of the number of detected genes and molecule counts. However, it is noticeable that points with higher UMAP 1 values (further to the right) have detected more genes. Additionally, as demonstrated in the correlation analysis, these two variables or characteristics positively correlate. Correlation = 0.9174.
+
+Next, we will plot the resulting UMAP graphs from Beyondcell based on the cell cycle phase, the clusters detected by Seurat, and the cancer types (22 types, as mentioned earlier):
+
+```{r}
+bcClusters(bc, UMAP = "beyondcell", idents = "Phase", factor.col = TRUE, pt.size = 1.5)
+bcClusters(bc, UMAP = "beyondcell", idents = "seurat_clusters", factor.col = TRUE, pt.size = 1.5)
+bcClusters(bc, UMAP = "beyondcell", idents = "Cancer_type", factor.col = TRUE, pt.size = 1)
+
+#In this case, since they are factors, factor.col = T with a different idents depending on the condition we want to view from the metadata slot.
+```
+In the following graphs, we attempt to detect different clusters based on the expression pattern of cancer cells according to the phase of the cell cycle they are in, the clusters detected by Seurat, and the cancer type. In the first graph, we observe that tumor cell lines are found in all cell cycle states, indicating that potential drug resistance cannot be explained solely by the cell cycle phase. We observe a highly heterogeneous distribution.
+
+In the second graph, Seurat has detected 44 different expression patterns in 198 cell lines across 22 types of cancer, demonstrating the significant intra- and inter-tumoral heterogeneity of the dataset.
+
+However, in the third graph, we observe the cluster distribution of different tumor types based on their expression pattern. It is evident that some cancer types are more heterogeneous than others (the more heterogeneous types are scattered across different locations in the UMAP plot). Among the most heterogeneous types are ovarian cancer, lung cancer, and neuroblastoma, while among the more homogeneous ones are breast cancer and bladder cancer.
+
+Beyondcell recommends recomputing the UMAP, and therefore we proceed with this.
+
+```{r}
+# Recompute the UMAP.
+bc <- bcUMAP(bc, pc = 10, k.neighbors = 20, res = 0.2)
+# Visualize the therapeutic clusters.
+bcClusters(bc, UMAP = "beyondcell", idents = "bc_clusters_res.0.2", pt.size = 1)
+bcClusters(bc, UMAP = "beyondcell", idents = "Cancer_type", factor.col = TRUE, pt.size = 1)
+
+
+```
+Afterwards, we identified the resulting clusters after processing with Beyondcell, revealing 9 clusters (0, 1, 2, 3, 4, 5, 6, 7, and 8). Even with Beyondcell processing, we can observe heterogeneity in some clusters like 8 and 7. Overlaying both graphs shows how various types of tumors are grouped within the same cluster. This suggests that these cancer types share similar gene expression patterns, implying that if a cluster is particularly sensitive to a drug, the cell lines within it will also exhibit common drug response. However, it is true that most cancer types are highly heterogeneous, so this rule does not always apply. Hence, tumor heterogeneity is one of the main challenges in personalized cancer therapy. For instance, cluster 0, being very large, also exhibits high heterogeneity by including cell lines or cancer types such as skin cancer, thyroid cancer, liver cancer, brain cancer, and several others.
+
+Next, we will compute the ranges based on the clusters resulting from Beyondcell, according to Beyondcell's classification based on expression pattern and cancer type, in order to visually interpret the results (to find drugs that induce sensitivity and thus alter the expression profile using the graphs from functions like bc4Squares and bcHistogram).
+
+```{r}
+# Obtain unextended therapeutic cluster-based statistics.
+bc <- bcRanks(bc, idents = "bc_clusters_res.0.2", extended = FALSE)
+bc <- bcRanks(bc, idents = "Cancer_type", extended = FALSE)
+
+#If extended = TRUE, we obtain more parameters such as standard deviation, minimum and maximum, and other statistics (more computationally expensive). Then, with sp.cutoff and resm.cutoff, we can apply a filter for SP and residual mean as desired, with both being vectors
+```
+```{r}
+bc<- bcRanks(bc, idents= 'Cell_line', extended = F)
+```
+The classification returned by bcRanks() orders drug signatures from highest to lowest sensitivity for a specific group of cells/points. This type of ranking could be useful for inspecting intratumoral heterogeneity (ITH). To facilitate the visualization of this ranking, we have included the bc4Squares() function in Beyondcell, which we explained in detail earlier.
+
+It is important to note that SP is the scaled value where normalized negative scores switch to positive scores and vice versa. For example, a completely sensitive dataset will have SP = 0 (or close to it), as there will be no negative normalized scores for that specific drug across the population. Conversely, a dataset insensitive to a particular drug is expected to have SP ≈ 1. Intermediate SP values, on the other hand, reflect datasets containing both susceptible and non-susceptible cells, a true reflection of heterogeneity.
+
+Note that SP is not equivalent to the proportion of cells insensitive to a specific drug, although there is a positive correlation between these two metrics.
+
+Next, we can obtain a summary table using the bcRanks() function. It includes basic statistical descriptors such as SP, mean, median, residual mean, etc. It also calculates a signature range considering SP and residual mean. With the generated table, we assist in prioritizing candidate drugs for specific groups of cells.
+
+```{r}
+head(bc@ranks$bc_clusters_res.0.2)
+head(bc@ranks$Cancer_type)
+
+#The same results appear in both calculated rankings (same drugs with the same SP values).
+```
+
+As mentioned earlier, we will create graphs to see which drugs would induce changes in the expression profile within each cluster.
+
+```{r}
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "1", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "0", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "2", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "3", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "4", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "5", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "6", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "7", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "bc_clusters_res.0.2", lvl = "8", top = 3, pt.size = 1)
+
+# With level, we select the level of the metadata feature (number of clusters, etc.). With top, we select the number of most significant drugs per quadrant. Thanks to pt.size, we select the point size. With force=1, we avoid label overlap.
+```
+
+```{r}
+bc4Squares(bc, idents = "Cancer_type", lvl = "Bile Duct Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Bladder Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Bone Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Brain Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Breast Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Colon/Colorectal Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Endometrial/Uterine Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Esophageal Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Fibroblast", top = 3, pt.size = 1)
+
+bc4Squares(bc, idents = "Cancer_type", lvl = "Kidney Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Liver Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Lung Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Neuroblastoma", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Ovarian Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Pancreatic Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Prostate Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Sarcoma", top = 3, pt.size = 1)
+
+bc4Squares(bc, idents = "Cancer_type", lvl = "Skin Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Thyroid Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Gastric Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Gallbladder Cancer", top = 3, pt.size = 1)
+bc4Squares(bc, idents = "Cancer_type", lvl = "Head and Neck Cancer", top = 3, pt.size = 1)
+
+
+
+```
+
+After using the bc4Squares function, we obtain scatter plots for each cluster showing the drugs that induce the most and least changes in expression profiles of cells within the cluster of interest. This allows us to prioritize drugs (graphical representations of scores and SP, identifying sensitivity or resistance, unraveling therapeutic heterogeneity, etc.).
+
+In this type of graph, SP (Y-axis) and the mean of residuals (X-axis) are represented:
+
+- SP (Switch Point): Represents the magnitude of transcriptional changes in the cells of the cluster being analyzed.
+
+- Mean of residuals: Evaluates the efficacy of drug response models.
+
+This allows us to identify four quadrants. However, they do not always appear in all clusters:
+
+- Low Sensitivity Drugs: These represent the worst drugs as cells are resistant to them.
+
+- High Sensitivity Drugs: These drugs are strong candidates due to their ability to induce significant expression changes (or perturbations) because of their cells' high sensitivity to them.
+
+- Differential - High Sensitivity Drugs: These drugs induce a homogeneous response and are highly effective. However, they do not optimally target all cluster cells due to sensitivity differences, even though they affect the majority.
+
+- Differential - Low Sensitivity Drugs: These drugs induce a heterogeneous response and have low effectiveness. They are undesirable due to their limited ability to induce changes or perturbations, often affecting a high number of insensitive cells.
+
+Next, we will plot histograms, which provide valuable information about the sensitivity of the top-ranked drugs across different clusters.
+
+```{r}
+bcHistogram(bc, signatures = c("sig-20940" , "sig-20958", "sig-20880"), idents = "bc_clusters_res.0.2")#TC0
+bcHistogram(bc, signatures = c("sig-21191" , "sig-20940", "sig-21364"), idents = "bc_clusters_res.0.2")#TC1
+bcHistogram(bc, signatures = c("sig-21364" , "sig-21170", "sig-20901"), idents = "bc_clusters_res.0.2")#TC2
+
+bcHistogram(bc, signatures = c("sig-21456" , "sig-20898", "sig-20901"), idents = "bc_clusters_res.0.2")#TC3
+bcHistogram(bc, signatures = c("sig-20940" , "sig-20990"), idents = "bc_clusters_res.0.2")#TC4
+bcHistogram(bc, signatures = c("sig-20905" , "sig-21364"), idents = "bc_clusters_res.0.2")#TC5
+bcHistogram(bc, signatures = c("sig-21050" , "sig-21456"), idents = "bc_clusters_res.0.2")#TC6
+bcHistogram(bc, signatures = c( "sig-20923", "sig-20902"), idents = "bc_clusters_res.0.2")#TC7
+bcHistogram(bc, signatures = c("sig-20990" , "sig-20912"), idents = "bc_clusters_res.0.2")#TC8
+
+#With signatures, we select the drug signatures of our interest (in this case, those seen with bc4Squares), and with idents, the column of the metadata slot we want to view. It is necessary to apply bcRanks to the idents of our interest beforehand to obtain this plot.
+```
+We will also generate histograms as per the example we explained in the results, specifically for cluster 0, which includes skin cancer and sarcoma types that show sensitivity to the drugs vincristine and podophyllotoxin bromide.
+
+```{r}
+bcHistogram(bc, signatures = 'sig-20940', idents = 'Cancer_type')
+```
+
+
+
+
